@@ -2,6 +2,10 @@
 name = "mio-child-process"
 version = "0.1.0"
 authors = ["Victor Koenders <victor.koenders@gmail.com>"]
+readme = "readme.md"
+description = "An extension to mio to support child processes"
+license = "MIT"
+repository = "https://github.com/trangar/mio-child-process"
 
 [dependencies]
 mio-extras = "2.0.4"
