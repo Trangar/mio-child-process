@@ -5,8 +5,11 @@ use std::sync::mpsc::TryRecvError;
 
 #[test]
 fn test_ping() {
-    let mut process = Command::new("ping")
-        .arg("8.8.8.8")
+    let mut process = Command::new("ping");
+    if cfg!(target_os = "linux") {
+        process.arg("-c").arg("4");
+    }
+    let mut process = process.arg("8.8.8.8")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn_async()

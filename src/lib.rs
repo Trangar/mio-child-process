@@ -14,8 +14,11 @@
 //! use std::sync::mpsc::TryRecvError;
 //! 
 //! fn main() {
-//!     let mut process = Command::new("ping")
-//!         .arg("8.8.8.8")
+//! let mut process = Command::new("ping");
+//!    if cfg!(target_os = "linux") {
+//!        process.arg("-c").arg("4");
+//!    }
+//!    let mut process = process.arg("8.8.8.8")
 //!         .stdout(Stdio::piped())
 //!         .stderr(Stdio::piped())
 //!         .spawn_async()
@@ -126,14 +129,14 @@ impl Process {
                 Ok(r) => r,
             };
             if !result.stdout.is_empty() {
-                if ShouldAbort::Yes
+                if SendResult::Abort
                     == try_send_buffer(&result.stdout, StdioChannel::Stdout, &sender)
                 {
                     return;
                 }
             }
             if !result.stderr.is_empty() {
-                if ShouldAbort::Yes
+                if SendResult::Abort
                     == try_send_buffer(&result.stderr, StdioChannel::Stderr, &sender)
                 {
                     return;
@@ -185,32 +188,32 @@ impl Evented for Process {
 }
 
 #[derive(PartialEq, Eq, Debug)]
-enum ShouldAbort {
-    Yes,
-    No,
+enum SendResult {
+    Abort,
+    Ok,
 }
 
 fn try_send_buffer(
     buffer: &[u8],
     channel: StdioChannel,
     sender: &Sender<ProcessEvent>,
-) -> ShouldAbort {
+) -> SendResult {
     let str = match std::str::from_utf8(buffer) {
         Ok(s) => s,
         Err(e) => {
             let _ = sender.send(ProcessEvent::Utf8Error(channel, e));
-            return ShouldAbort::Yes;
+            return SendResult::Abort;
         }
     };
     if str.is_empty() {
         println!("Aborting try_send_buffer because we're sending empty strings");
         println!("Channel: {:?}", channel);
-        return ShouldAbort::Yes;
+        return SendResult::Abort;
     }
     if let Err(_) = sender.send(ProcessEvent::Data(channel, String::from(str))) {
-        ShouldAbort::Yes
+        SendResult::Abort
     } else {
-        ShouldAbort::No
+        SendResult::Ok
     }
 }
 
@@ -228,7 +231,7 @@ fn create_reader<T: Read + 'static>(
                     break;
                 }
                 Ok(n) => {
-                    if ShouldAbort::Yes == try_send_buffer(&buffer[..n], channel, &sender) {
+                    if SendResult::Abort == try_send_buffer(&buffer[..n], channel, &sender) {
                         break;
                     }
                 }
