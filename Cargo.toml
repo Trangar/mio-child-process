@@ -1,0 +1,8 @@
+[package]
+name = "mio-child-process"
+version = "0.1.0"
+authors = ["Victor Koenders <victor.koenders@gmail.com>"]
+
+[dependencies]
+mio-extras = "2.0.4"
+mio = "0.6.14"
