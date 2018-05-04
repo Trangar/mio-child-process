@@ -1,5 +1,9 @@
 #![deny(missing_docs)]
 
+// docs.rs is still on rust 1.26 so this has not stabilized yet
+#![allow(stable_features)]
+#![feature(conservative_impl_trait)]
+
 //! A simple crate that allows child processes to be handled with mio
 //! 
 //! # usage
