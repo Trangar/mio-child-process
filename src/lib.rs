@@ -1,18 +1,18 @@
 #![deny(missing_docs)]
 
 //! A simple crate that allows child processes to be handled with mio
-//! 
+//!
 //! # usage
-//! 
+//!
 //! ``` rust
 //! extern crate mio_child_process;
 //! extern crate mio;
-//! 
+//!
 //! use mio::{Poll, Token, Ready, PollOpt, Events, Evented};
 //! use std::process::{Command, Stdio};
 //! use mio_child_process::{CommandAsync, ProcessEvent};
 //! use std::sync::mpsc::TryRecvError;
-//! 
+//!
 //! fn main() {
 //! let mut process = Command::new("ping");
 //!    if cfg!(target_os = "linux") {
@@ -38,7 +38,7 @@
 //!                     Err(TryRecvError::Disconnected) => panic!("Could not receive from process"),
 //!                 };
 //!                 println!("{:?}", result);
-//! 
+//!
 //!                 match result {
 //!                     ProcessEvent::Exit(exit_status) => {
 //!                         assert!(exit_status.success());
@@ -54,15 +54,15 @@
 //!     }
 //! }
 //! ```
-//! 
+//!
 //! # Notes
-//! 
+//!
 //! StdioChannel::Stdout will only be emitted when `.stdout(Stdio::piped())` is passed to the `Command`.
-//! 
+//!
 //! StdioChannel::Stderr will only be emitted when `.stderr(Stdio::piped())` is passed to the `Command`.
-//! 
+//!
 //! # Threads
-//! 
+//!
 //! Internally a thread gets spawned for each std stream it's listening to (stdout and stderr).
 //! Another thread is started, that is in a blocking wait until the child process is done.
 //! This means that mio-child-process uses between 1 to 3 threads for every process that gets started.
@@ -92,10 +92,39 @@ impl CommandAsync for Command {
     }
 }
 
+#[cfg(target_os = "windows")]
+mod handle {
+    extern crate winapi;
+
+    use std::os::windows::io::{AsRawHandle, RawHandle};
+    use std::process::Child;
+
+    pub(crate) struct Handle(RawHandle);
+    impl Handle {
+        pub(crate) fn new(child: &Child) -> Handle {
+            Handle(child.as_raw_handle())
+        }
+
+        pub(crate) fn kill(&mut self) -> ::std::io::Result<()> {
+            if 0 == unsafe { winapi::um::processthreadsapi::TerminateProcess(self.0 as *mut _, 1) } {
+                Err(::std::io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod handle {}
+
+use handle::Handle;
+
 /// An async child process
 pub struct Process {
     receiver: Receiver<ProcessEvent>,
     stdin: Option<std::process::ChildStdin>,
+    handle: Handle,
 }
 
 impl Process {
@@ -105,11 +134,11 @@ impl Process {
     }
 
     /// Create an async child process based on  given child.
-    /// 
+    ///
     /// Note: this will spawn 1-3 threads in the background. These threads are blocking, but the overhead might be noticable. Use with care.
-    /// 
+    ///
     /// If the child is created with a Command with `stdout(Stdio::piped())`, the async process will automatically listen to the stdout stream.
-    /// 
+    ///
     /// If the child is created with a Command with `stderr(Stdio::piped())`, the async process will automatically listen to the stderr stream.
     pub fn from_child(mut child: Child) -> Process {
         let (sender, receiver) = channel();
@@ -120,6 +149,7 @@ impl Process {
             spawn(create_reader(stderr, sender.clone(), StdioChannel::Stderr));
         }
         let stdin = child.stdin.take();
+        let handle = Handle::new(&child);
         spawn(move || {
             let result = match child.wait_with_output() {
                 Err(e) => {
@@ -144,13 +174,24 @@ impl Process {
             }
             let _ = sender.send(ProcessEvent::Exit(result.status));
         });
-        Process { receiver, stdin }
+        Process {
+            receiver,
+            stdin,
+            handle,
+        }
+    }
+
+    /// Kill the process child.
+    /// 
+    /// This will terminate the inner handle to the process.
+    pub fn kill(&mut self) -> Result<()> {
+        self.handle.kill()
     }
 }
 
 impl Write for Process {
     /// Write a buffer to the Stdin stream of this child process.
-    /// 
+    ///
     /// If the child is not created with `.stdin(Stdio::piped())`,
     /// This function will return an error `ErrorKind::NotConnected`.
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
@@ -161,7 +202,7 @@ impl Write for Process {
     }
 
     /// Flushed the Stdin stream of this child process.
-    /// 
+    ///
     /// If the child is not created with `.stdin(Stdio::piped())`,
     /// This function will return an error `ErrorKind::NotConnected`.
     fn flush(&mut self) -> Result<()> {
@@ -252,7 +293,7 @@ pub enum ProcessEvent {
 
     /// There was an issue with starting or closing a child process.
     CommandError(std::io::Error),
-    
+
     /// There was an issue while reading the stdout or stderr stream.
     IoError(StdioChannel, std::io::Error),
 
