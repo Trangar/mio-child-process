@@ -125,6 +125,7 @@ pub struct Process {
     receiver: Receiver<ProcessEvent>,
     stdin: Option<std::process::ChildStdin>,
     handle: Handle,
+    id: u32,
 }
 
 impl Process {
@@ -149,6 +150,7 @@ impl Process {
             spawn(create_reader(stderr, sender.clone(), StdioChannel::Stderr));
         }
         let stdin = child.stdin.take();
+        let id = child.id();
         let handle = Handle::new(&child);
         spawn(move || {
             let result = match child.wait_with_output() {
@@ -178,6 +180,7 @@ impl Process {
             receiver,
             stdin,
             handle,
+            id,
         }
     }
 
@@ -186,6 +189,11 @@ impl Process {
     /// This will terminate the inner handle to the process.
     pub fn kill(&mut self) -> Result<()> {
         self.handle.kill()
+    }
+
+    /// Returns the OS-assigned process identifier associated with this child.
+    pub fn id(&self) -> u32 {
+        self.id
     }
 }
 
