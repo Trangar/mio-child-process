@@ -44,3 +44,38 @@ fn test_ping() {
         }
     }
 }
+
+#[cfg(target_os = "windows")]
+pub mod windows {
+    extern crate winapi;
+    use std::process::{Command, Stdio};
+    use ::CommandAsync;
+
+    #[test]
+    fn test_terminate(){
+        let mut process = Command::new("ping");
+        let mut process = process.arg("8.8.8.8")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn_async()
+            .expect("Could not spawn process");
+
+        let pid = process.id();
+        assert!(process_is_running(pid), "Expected process to run after starting it");
+        process.kill().expect("Could not kill process");
+        assert!(process_is_running(pid), "Expected process to be terminated after terminating it");
+    }
+
+    fn process_is_running(pid: u32) -> bool {
+        let handle = unsafe {winapi::um::processthreadsapi::OpenProcess(0x0001, 1, pid) };
+        !handle.is_null()
+    }
+}
+
+#[cfg(target_os = "unix")]
+pub mod unix {
+    #[test]
+    fn test_terminate(){
+        unimplemented!();
+    }
+}

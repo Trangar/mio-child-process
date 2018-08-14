@@ -12,4 +12,4 @@ mio-extras = "2.0.4"
 mio = "0.6.14"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3" }
+winapi = { version = "0.3", features = ["tlhelp32"] }

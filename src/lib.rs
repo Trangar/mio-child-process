@@ -69,6 +69,8 @@
 
 extern crate mio;
 extern crate mio_extras;
+#[cfg(target_os = "windows")]
+extern crate winapi;
 
 use mio::{Evented, Poll, PollOpt, Ready, Token};
 use mio_extras::channel::{channel, Receiver, Sender};
@@ -92,39 +94,10 @@ impl CommandAsync for Command {
     }
 }
 
-#[cfg(target_os = "windows")]
-mod handle {
-    extern crate winapi;
-
-    use std::os::windows::io::{AsRawHandle, RawHandle};
-    use std::process::Child;
-
-    pub(crate) struct Handle(RawHandle);
-    impl Handle {
-        pub(crate) fn new(child: &Child) -> Handle {
-            Handle(child.as_raw_handle())
-        }
-
-        pub(crate) fn kill(&mut self) -> ::std::io::Result<()> {
-            if 0 == unsafe { winapi::um::processthreadsapi::TerminateProcess(self.0 as *mut _, 1) } {
-                Err(::std::io::Error::last_os_error())
-            } else {
-                Ok(())
-            }
-        }
-    }
-}
-
-#[cfg(target_os = "linux")]
-mod handle {}
-
-use handle::Handle;
-
 /// An async child process
 pub struct Process {
     receiver: Receiver<ProcessEvent>,
     stdin: Option<std::process::ChildStdin>,
-    handle: Handle,
     id: u32,
 }
 
@@ -134,14 +107,7 @@ impl Process {
         self.receiver.try_recv()
     }
 
-    /// Create an async child process based on  given child.
-    ///
-    /// Note: this will spawn 1-3 threads in the background. These threads are blocking, but the overhead might be noticable. Use with care.
-    ///
-    /// If the child is created with a Command with `stdout(Stdio::piped())`, the async process will automatically listen to the stdout stream.
-    ///
-    /// If the child is created with a Command with `stderr(Stdio::piped())`, the async process will automatically listen to the stderr stream.
-    pub fn from_child(mut child: Child) -> Process {
+    pub(crate) fn from_child(mut child: Child) -> Process {
         let (sender, receiver) = channel();
         if let Some(stdout) = child.stdout.take() {
             spawn(create_reader(stdout, sender.clone(), StdioChannel::Stdout));
@@ -151,7 +117,6 @@ impl Process {
         }
         let stdin = child.stdin.take();
         let id = child.id();
-        let handle = Handle::new(&child);
         spawn(move || {
             let result = match child.wait_with_output() {
                 Err(e) => {
@@ -179,16 +144,87 @@ impl Process {
         Process {
             receiver,
             stdin,
-            handle,
             id,
         }
     }
 
-    /// Kill the process child.
-    /// 
-    /// This will terminate the inner handle to the process.
+    /// Kill the process child, and all it's children.
+    #[cfg(target_os = "windows")]
     pub fn kill(&mut self) -> Result<()> {
-        self.handle.kill()
+        use std::collections::HashMap;
+        use std::io::Error;
+        use std::mem;
+        use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
+        use winapi::um::processthreadsapi::{OpenProcess, TerminateProcess};
+        use winapi::um::tlhelp32::{
+            CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
+            TH32CS_SNAPPROCESS,
+        };
+        use winapi::um::winnt::PROCESS_TERMINATE;
+
+        // We first need to make a list of all processes and their parents
+        // Then we'll go through the processes and list their ids and parent ids
+        // then we'll look up the current pid, find all processes that have this pid as their parent, and kill those first
+        type ParentID = u32;
+        type ChildID = u32;
+        let mut processes = HashMap::<ParentID, Vec<ChildID>>::new();
+
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            unsafe {
+                CloseHandle(snapshot);
+            }
+            return Err(Error::last_os_error());
+        }
+
+        let mut process_entry_32: PROCESSENTRY32 = unsafe { mem::zeroed() };
+        process_entry_32.dwSize = mem::size_of::<PROCESSENTRY32>() as u32;
+        if 0 == unsafe { Process32First(snapshot, &mut process_entry_32) } {
+            unsafe {
+                CloseHandle(snapshot);
+            }
+            return Err(Error::last_os_error());
+        }
+
+        // Push first entry
+        processes
+            .entry(process_entry_32.th32ParentProcessID)
+            .or_insert_with(Vec::new)
+            .push(process_entry_32.th32ProcessID);
+
+        while unsafe { Process32Next(snapshot, &mut process_entry_32) } != 0 {
+            // Push subsequent entries
+            processes
+                .entry(process_entry_32.th32ParentProcessID)
+                .or_insert_with(Vec::new)
+                .push(process_entry_32.th32ProcessID);
+        }
+
+        unsafe {
+            CloseHandle(snapshot);
+        }
+
+        // Kill all children, then kills the process with the given `pid`
+        fn kill_pid(pid: u32, processes: &HashMap<ParentID, Vec<ChildID>>) -> Result<()> {
+            if let Some(children) = processes.get(&pid) {
+                for child in children {
+                    kill_pid(*child, processes)?;
+                }
+            }
+            // open a handle to the given pid
+            let handle = unsafe { OpenProcess(PROCESS_TERMINATE, 0, pid) };
+            if handle.is_null() {
+                // handle not gotten
+                Err(Error::last_os_error())
+            } else if 0 == unsafe { TerminateProcess(handle, 0) } {
+                // handle not terminated
+                Err(Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        }
+
+        kill_pid(self.id(), &processes)
     }
 
     /// Returns the OS-assigned process identifier associated with this child.
