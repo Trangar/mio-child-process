@@ -227,6 +227,20 @@ impl Process {
         kill_pid(self.id(), &processes)
     }
 
+    /// Kill the process child, and all it's children.
+    #[cfg(target_os = "linux")]
+    pub fn kill(&mut self) -> Result<()> {
+        extern crate libc;
+        use std::io::Error;
+
+        let result = unsafe { libc::kill(self.id() as i32, libc::SIGKILL) };
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(Error::last_os_error())
+        }
+    }
+
     /// Returns the OS-assigned process identifier associated with this child.
     pub fn id(&self) -> u32 {
         self.id
