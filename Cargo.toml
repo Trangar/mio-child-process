@@ -1,6 +1,6 @@
 [package]
 name = "mio-child-process"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Victor Koenders <victor.koenders@gmail.com>"]
 readme = "readme.md"
 description = "An extension to mio to support child processes"
@@ -8,8 +8,8 @@ license = "MIT"
 repository = "https://github.com/trangar/mio-child-process"
 
 [dependencies]
-mio-extras = "2.0.4"
-mio = "0.6.14"
+mio-extras = "2.0.5"
+mio = "0.6.15"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["tlhelp32"] }
