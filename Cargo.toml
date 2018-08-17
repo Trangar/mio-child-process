@@ -1,6 +1,6 @@
 [package]
 name = "mio-child-process"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Victor Koenders <victor.koenders@gmail.com>"]
 readme = "readme.md"
 description = "An extension to mio to support child processes"

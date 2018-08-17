@@ -72,8 +72,6 @@ fn test_terminate() {
 #[cfg(target_os = "windows")]
 fn process_is_running(pid: u32) -> bool {
     extern crate winapi;
-    use std::process::{Command, Stdio};
-    use CommandAsync;
     let handle = unsafe { winapi::um::processthreadsapi::OpenProcess(0x0001, 1, pid) };
     !handle.is_null()
 }
