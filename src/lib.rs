@@ -125,19 +125,17 @@ impl Process {
                 }
                 Ok(r) => r,
             };
-            if !result.stdout.is_empty() {
-                if SendResult::Abort
+            if !result.stdout.is_empty()
+                && SendResult::Abort
                     == try_send_buffer(&result.stdout, StdioChannel::Stdout, &sender)
-                {
-                    return;
-                }
+            {
+                return;
             }
-            if !result.stderr.is_empty() {
-                if SendResult::Abort
+            if !result.stderr.is_empty()
+                && SendResult::Abort
                     == try_send_buffer(&result.stderr, StdioChannel::Stderr, &sender)
-                {
-                    return;
-                }
+            {
+                return;
             }
             let _ = sender.send(ProcessEvent::Exit(result.status));
         });
@@ -309,7 +307,10 @@ fn try_send_buffer(
         println!("Channel: {:?}", channel);
         return SendResult::Abort;
     }
-    if let Err(_) = sender.send(ProcessEvent::Data(channel, String::from(str))) {
+    if sender
+        .send(ProcessEvent::Data(channel, String::from(str)))
+        .is_err()
+    {
         SendResult::Abort
     } else {
         SendResult::Ok
