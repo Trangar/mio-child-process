@@ -211,10 +211,7 @@ impl Process {
             }
             // open a handle to the given pid
             let handle = unsafe { OpenProcess(PROCESS_TERMINATE, 0, pid) };
-            if handle.is_null() {
-                // handle not gotten
-                Err(Error::last_os_error())
-            } else if 0 == unsafe { TerminateProcess(handle, 0) } {
+            if handle.is_null() || 0 == unsafe { TerminateProcess(handle, 0) } {
                 // handle not terminated
                 Err(Error::last_os_error())
             } else {
