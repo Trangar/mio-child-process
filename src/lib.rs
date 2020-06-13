@@ -40,8 +40,7 @@
 //!                 println!("{:?}", result);
 //!
 //!                 match result {
-//!                     ProcessEvent::Exit(exit_status) => {
-//!                         assert!(exit_status.success());
+//!                     ProcessEvent::Exit(_exit_status) => {
 //!                         break 'outer;
 //!                     },
 //!                     ProcessEvent::IoError(_, _) | ProcessEvent::CommandError(_) => {
@@ -226,7 +225,6 @@ impl Process {
     #[cfg(target_os = "linux")]
     pub fn kill(&mut self) -> Result<()> {
         extern crate libc;
-        use std::io::Error;
 
         let result = unsafe { libc::kill(self.id() as i32, libc::SIGKILL) };
         if result == 0 {
