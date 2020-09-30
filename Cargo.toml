@@ -9,7 +9,7 @@ repository = "https://github.com/trangar/mio-child-process"
 
 [dependencies]
 mio-extras = "2.0.6"
-mio = "0.6.2" # dependency of mio-extras
+mio = "0.7.1" # dependency of mio-extras
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = ["tlhelp32"] }
